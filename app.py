@@ -303,11 +303,15 @@ def remove_task(task_id):
     monitoring_tasks.pop(task_id, None)
     return redirect(url_for('index'))
 
-if __name__ == '__main__':
-    # Initialize DB and load tasks on startup
-    with app.app_context():
-        db.create_all()
-        load_tasks_from_db()
-    # Start the Flask app
-    app.run(debug=True)
 
+if __name__ == '__main__':
+    # Ensure the app is properly initialized and database tasks are loaded
+    with app.app_context():
+        print("[INFO] Initializing the database...")
+        db.create_all()
+        print("[INFO] Loading tasks from the database...")
+        load_tasks_from_db()
+
+    # Start the Flask app
+    print("[INFO] Starting the Flask application...")
+    app.run(host='0.0.0.0', port=5000, debug=True)
