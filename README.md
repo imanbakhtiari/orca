@@ -51,6 +51,26 @@ pip install requirement.txt
 python3 app.py
 ```
 
+- make it systemd by this 
+```bash
+[Unit]
+Description=Flask Application for Orca
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/orca
+ExecStart=/usr/bin/python3 app.py
+Environment="FLASK_APP=app.py"
+Environment="FLASK_ENV=production"
+Environment="PYTHONUNBUFFERED=1"
+ExecStartPre=/bin/mkdir -p /opt/orca/instance
+ExecStartPre=/bin/chown root:root /opt/orca/instance
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
 
 
 ---
