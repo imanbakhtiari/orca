@@ -50,3 +50,14 @@ pip install requirement.txt
 ```
 python3 app.py
 ```
+
+
+
+---
+
+## Contributing
+
+We welcome contributions from the community! Whether it's bug fixes, new features, or improvements to the documentation, all contributions are appreciated. Please read our [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines.
+
+---
+
