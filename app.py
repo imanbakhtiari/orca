@@ -178,7 +178,8 @@ def curl_target(task_id, target, timeout, expected_status):
             target = "http://" + target
 
         http_start_time = time.time()
-        response = requests.get(target, timeout=timeout)
+        #response = requests.get(target, timeout=timeout)
+        response = requests.get(target, timeout=timeout, verify=False)
         http_end_time = time.time()
         response_time = (http_end_time - http_start_time) * 1000.0
         status_match = (response.status_code == expected_status)
