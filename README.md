@@ -36,8 +36,7 @@ A lightweight, open-source monitoring service that tracks the health of your HTT
    ```bash
    git clone https://github.com/imanbakhtiari/orca.git
    cd orca
-
-
+   ```
 
 ```
 pip install requirement.txt
