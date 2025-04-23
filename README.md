@@ -19,11 +19,9 @@ A lightweight, open-source monitoring service that tracks the health of your HTT
 ---
 
 ## Screenshots
-### Main Dashboard
-![Main Dashboard Screenshot](https://via.placeholder.com/800x400?text=Main+Dashboard)
+### Orca Monitoring UI
 
-### Monitoring Metrics
-![Metrics Screenshot](https://via.placeholder.com/800x400?text=Prometheus+Metrics)
+![Orca Monitoring UI](pic.png)
 
 ---
 
