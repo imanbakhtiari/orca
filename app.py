@@ -5,6 +5,9 @@ from flask_sqlalchemy import SQLAlchemy
 import subprocess
 import requests
 import time
+from datetime import datetime
+import ssl
+import socket
 
 app = Flask(__name__)
 
@@ -18,6 +21,7 @@ scheduler = APScheduler()
 scheduler.api_enabled = True
 scheduler.init_app(app)
 scheduler.start()
+
 
 # Prometheus metrics
 http_response_time_gauge = Gauge(
@@ -60,6 +64,17 @@ nslookup_time_gauge = Gauge(
     "DNS resolution time in milliseconds",
     ["target"]
 )
+http_ssl_days_left_gauge = Gauge(
+    "http_ssl_days_left",
+    "Remaining days until HTTPS certificate expires",
+    ["target"]
+)
+
+tcp_port_status_gauge = Gauge(
+    "tcp_port_status",
+    "Whether a TCP port is open (1) or closed (0)",
+    ["target"]
+)
 
 # Database model
 class MonitoringTask(db.Model):
@@ -69,6 +84,7 @@ class MonitoringTask(db.Model):
     interval = db.Column(db.Integer, nullable=False)
     timeout = db.Column(db.Integer, nullable=False)
     expected_status = db.Column(db.Integer, nullable=True)  # Only relevant for HTTP
+    description = db.Column(db.String(255), nullable=True)
 
 # In-memory cache for monitoring tasks
 monitoring_tasks = {}
@@ -85,6 +101,7 @@ def load_tasks_from_db():
             "interval": task.interval,
             "timeout": task.timeout,
             "expected_status": task.expected_status,
+            "description": task.description,
             "last_result": {
                 "target": task.target,
                 "type": task.method,
@@ -131,6 +148,33 @@ def nslookup_target(task_id, target, timeout):
         nslookup_time_gauge.labels(target=target).set(0)
         monitoring_tasks[task_id]['last_result']['dns_lookup_ms'] = None
 
+def tcp_port_check(task_id, target, timeout):
+    """Check if TCP port on the target is open."""
+    try:
+        print(f"[TCP-CHECK] Connecting to {target}")
+        if ":" not in target:
+            raise ValueError("Target must be in host:port format")
+
+        host, port_str = target.split(":")
+        port = int(port_str)
+        with socket.create_connection((host, port), timeout=timeout):
+            print(f"[TCP-CHECK] {target} is OPEN")
+            tcp_port_status_gauge.labels(target=target).set(1)
+            monitoring_tasks[task_id]['last_result'] = {
+                "target": target,
+                "type": "TCP-PORT",
+                "port_open": True
+            }
+    except Exception as e:
+        print(f"[TCP-CHECK] {target} is CLOSED: {e}")
+        tcp_port_status_gauge.labels(target=target).set(0)
+        monitoring_tasks[task_id]['last_result'] = {
+            "target": target,
+            "type": "TCP-PORT",
+            "port_open": False,
+            "error": str(e)
+        }
+
 def ping_target(task_id, target, timeout):
     """Perform an ICMP ping."""
     try:
@@ -170,6 +214,39 @@ def ping_target(task_id, target, timeout):
         monitoring_tasks[task_id]['last_result'] = {"error": str(e)}
         icmp_success_gauge.labels(target=target).set(0)
 
+
+def curl_ssl_expiry(task_id, target, timeout):
+    """Check SSL expiry date for HTTPS target."""
+    try:
+        print(f"[SSL] Checking certificate for {target}")
+        if target.startswith("http://"):
+            target = target.replace("http://", "https://")
+        if not target.startswith("https://"):
+            target = "https://" + target
+
+        hostname = target.split("://")[1].split("/")[0]
+        ctx = ssl.create_default_context()
+        with socket.create_connection((hostname, 443), timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
+                ssl_expiry = ssock.getpeercert()['notAfter']
+                expire_date = datetime.strptime(ssl_expiry, "%b %d %H:%M:%S %Y %Z")
+                days_left = (expire_date - datetime.utcnow()).days
+                print(f"[SSL] {hostname} certificate expires in {days_left} days")
+                http_ssl_days_left_gauge.labels(target=hostname).set(days_left)
+                monitoring_tasks[task_id]['last_result'] = {
+                    "target": target,
+                    "type": "HTTPS-SSL",
+                    "days_left": days_left
+                }
+    except Exception as e:
+        print(f"[SSL] Error getting cert for {target}: {e}")
+        http_ssl_days_left_gauge.labels(target=target).set(0)
+        monitoring_tasks[task_id]['last_result'] = {
+            "target": target,
+            "type": "HTTPS-SSL",
+            "error": str(e)
+        }
+
 def curl_target(task_id, target, timeout, expected_status):
     """Perform an HTTP GET request using requests."""
     try:
@@ -178,7 +255,6 @@ def curl_target(task_id, target, timeout, expected_status):
             target = "http://" + target
 
         http_start_time = time.time()
-        #response = requests.get(target, timeout=timeout)
         response = requests.get(target, timeout=timeout, verify=False)
         http_end_time = time.time()
         response_time = (http_end_time - http_start_time) * 1000.0
@@ -194,6 +270,7 @@ def curl_target(task_id, target, timeout, expected_status):
             "content_length": len(response.content),
             "headers": dict(response.headers)
         }
+
         http_response_time_gauge.labels(target=target).set(response_time)
         http_status_code_gauge.labels(target=target).set(response.status_code)
         http_success_gauge.labels(target=target).set(1 if status_match else 0)
@@ -201,8 +278,17 @@ def curl_target(task_id, target, timeout, expected_status):
 
     except Exception as e:
         print(f"[HTTP] Error requesting {target}: {e}")
-        monitoring_tasks[task_id]['last_result'] = {"error": str(e)}
+        monitoring_tasks[task_id]['last_result'] = {
+            "target": target,
+            "type": "HTTP",
+            "error": str(e)
+        }
+
+        # Set synthetic values when request fails
+        http_response_time_gauge.labels(target=target).set(0)
+        http_status_code_gauge.labels(target=target).set(500)  # ← set synthetic 500
         http_success_gauge.labels(target=target).set(0)
+        http_content_length_gauge.labels(target=target).set(0)
 
 def monitor_tasks():
     """Scheduler entry point: loop over all tasks, run the relevant checks."""
@@ -218,6 +304,11 @@ def monitor_tasks():
             ping_target(task_id, task['target'], task['timeout'])
         elif task['type'] == "HTTP":
             curl_target(task_id, task['target'], task['timeout'], task['expected_status'])
+        elif task['type'] == "HTTPS-SSL":
+            curl_ssl_expiry(task_id, task['target'], task['timeout'])
+        elif task['type'] == "TCP-PORT":
+            tcp_port_check(task_id, task['target'], task['timeout'])
+
 
 # Schedule monitoring tasks every 10 seconds
 scheduler.add_job(id='monitor_task', func=monitor_tasks, trigger='interval', seconds=10)
@@ -235,6 +326,11 @@ def add_task():
     interval = int(request.form.get('interval', 60))
     timeout = int(request.form.get('timeout', 5))
     expected_status = int(request.form.get('expected_status', 200))
+    description = request.form.get('description')
+    port = request.form.get('port')
+
+    if method == "TCP-PORT" and port:
+        target = f"{target}:{port}"
 
     if target and method:
         if method != "HTTP":
@@ -248,7 +344,8 @@ def add_task():
             method=method,
             interval=interval,
             timeout=timeout,
-            expected_status=expected_status_db
+            expected_status=expected_status_db,
+            description=description
         )
         db.session.add(new_task)
         db.session.commit()
@@ -262,6 +359,7 @@ def add_task():
             "interval": interval,
             "timeout": timeout,
             "expected_status": expected_status_db,
+            "description": description,
             "last_result": {
                 "target": target,
                 "type": method,
@@ -303,6 +401,29 @@ def remove_task(task_id):
     # Also remove from memory
     monitoring_tasks.pop(task_id, None)
     return redirect(url_for('index'))
+
+@app.route('/edit/<task_id>', methods=['GET', 'POST'])
+def edit_task(task_id):
+    task_id_num = int(task_id.split("_")[-1])
+    task = MonitoringTask.query.get_or_404(task_id_num)
+
+    if request.method == 'POST':
+        task.target = request.form.get('target')
+        task.method = request.form.get('method')
+        task.interval = int(request.form.get('interval', 60))
+        task.timeout = int(request.form.get('timeout', 5))
+        task.description = request.form.get('description')
+
+        if task.method == "HTTP":
+            task.expected_status = int(request.form.get('expected_status', 200))
+        else:
+            task.expected_status = None
+
+        db.session.commit()
+        load_tasks_from_db()  # Reload in-memory
+        return redirect(url_for('index'))
+
+    return render_template('edit.html', task=task, task_id=task_id)
 
 
 if __name__ == '__main__':
