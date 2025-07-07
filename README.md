@@ -25,6 +25,16 @@ A lightweight, open-source monitoring service that tracks the health of your HTT
 
 ---
 
+## Docker
+
+```
+git clone https://github.com/imanbakhtiari/orca.git
+cd orca
+```
+```bash
+sudo docker compose up -d --build
+```
+
 ## Installation
 
 ### Prerequisites
