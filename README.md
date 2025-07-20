@@ -57,7 +57,7 @@ cd orca
 sudo docker compose up -d --build
 ```
 
-## Installation
+## Host Service Installation
 
 ### Prerequisites
 - Python 3.9 or higher
