@@ -12,8 +12,8 @@ A lightweight, open-source monitoring service that tracks the health of your HTT
 - **HTTP Monitoring**: Track response time, status codes, and content length for HTTP endpoints.
 - **ICMP Ping Monitoring**: Monitor latency and packet loss for any IP or domain.
 - **DNS Monitoring**: Measure DNS resolution times for any domain. 
-- **‌TCP PORT CHECK**: check tcp ports by specific host and port.
-- **HTTPS SSL VALIDITY**: remain days that ssl of a domain is still valid.
+- **‌TCP Port Check**: check tcp ports by specific host and port.
+- **HTTPS SSL Validity**: remain days that ssl of a domain is still valid.
 - **Prometheus Integration**: Expose metrics for integration with Prometheus and Grafana.
 - **Web Interface**: Add, monitor, and remove targets easily via a user-friendly web UI.
 - **Periodic Scheduling**: Powered by APScheduler to run tasks at defined intervals.
