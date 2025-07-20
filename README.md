@@ -25,9 +25,29 @@ A lightweight, open-source monitoring service that tracks the health of your HTT
 
 ![Orca Monitoring UI](pic.png)
 
+
+--- 
+
+## Ready Docker Compose
+
+```bash
+version: "3.9"
+
+services:
+  monitoring-app:
+    image: imanbakhtiari/orca:v1.0.1
+    container_name: monitoring_app
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./instance:/app/instance
+    restart: unless-stopped
+
+``` 
+
 ---
 
-## Docker
+## Docker Build
 
 ```
 git clone https://github.com/imanbakhtiari/orca.git
@@ -53,7 +73,6 @@ sudo docker compose up -d --build
 ```
 pip install requirement.txt
 ```
-
 
 
 ```
