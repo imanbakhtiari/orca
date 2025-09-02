@@ -71,7 +71,7 @@ sudo docker compose up -d --build
    ```
 
 ```
-pip install requirement.txt
+pip install -r requirement.txt
 ```
 
 
